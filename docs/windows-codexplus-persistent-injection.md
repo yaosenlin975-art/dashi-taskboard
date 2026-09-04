@@ -65,7 +65,7 @@
   - 使用 PowerShell WMI 枚举 `Win32_Process`。
   - 过滤名称和可执行路径匹配 `ChatGPT.exe` 的进程。
   - 根据 `ParentProcessId` 识别根进程。
-  - 只保留命令行包含 `--remote-debugging-port=` 的根进程。
+  - 由调用方选择命令行包含 `--remote-debugging-port=` 的根进程。
   - 返回 PID 和完整命令行，供现有 `codexProcessDebuggingPort()` 和监视逻辑复用。
 - 非 Windows 分支保持不变。
 
@@ -82,7 +82,7 @@
 - 循环执行：
   `node scripts/codex-injector.mjs --watch --open --port 9229 --app-path <ChatGPT.exe>`
 - 注入器退出后等待短暂时间再重新执行。
-- 所有输出写入项目 `.data\dashi-codex-plus.log`，避免后台进程打开可见窗口。
+- 标准输出写入 `.data\dashi-codex-plus.log`，错误输出写入 `.data\dashi-codex-plus.error.log`，避免后台进程打开可见窗口。
 - 不使用 `Add-Content` 并行追加这两个重定向日志文件；文件由 `Start-Process` 子进程独占，避免日志占用导致启动失败。
 
 #### 启动方式
@@ -92,7 +92,7 @@
 1. 在仓库目录安装依赖，并确认 Node.js `>=22.5`：`npm install`。
 2. 执行 `npm run build:web`，准备当前网页资源。
 3. 确认 Codex++ 已使用 CDP `9229` 启动，并确认 `127.0.0.1:47823` 上的现有 Taskboard 服务和该仓库 `.data` 目录可复用。
-4. 运行一次后台启动脚本。
+4. 运行 `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File .\scripts\dashi-codex-plus-launcher.ps1`。已有数据在其他目录时，追加 `-DataDirectory "<已有数据目录>"`。
 5. 需要登录 Windows 后自动运行时，执行脚本的 `-InstallStartup`；该参数只注册 Startup 快捷方式后立即返回，不会在当前命令中启动后台注入器。随后由 Windows 登录流程启动快捷方式。
 
 ### 3.2 环境变量

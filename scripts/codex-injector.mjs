@@ -375,7 +375,43 @@ function codexAppBundleBuild(appPath) {
   return result.stdout.trim() || null;
 }
 
+function windowsCodexAppProcesses(appPath) {
+  const executable = codexExecutablePath(appPath);
+  const result = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "$ErrorActionPreference = 'Stop'; @(Get-CimInstance Win32_Process -Filter \"Name='ChatGPT.exe'\" | ForEach-Object { [PSCustomObject]@{ ProcessId = $_.ProcessId; ParentProcessId = $_.ParentProcessId; ExecutablePath = $_.ExecutablePath; CommandLine = $_.CommandLine } }) | ConvertTo-Json -Compress",
+    ],
+    {
+      encoding: "utf8",
+      env: withoutTaskboardLauncherEnvironment(process.env),
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
+  if (result.status !== 0) throw new Error("Unable to inspect the launched Codex process");
+
+  const rows = JSON.parse(result.stdout.trim() || "[]");
+  const processRecords = Array.isArray(rows) ? rows : rows ? [rows] : [];
+  const executablePath = path.normalize(executable).toLowerCase();
+  const matches = processRecords.filter((record) => (
+    typeof record?.ExecutablePath === "string"
+    && path.normalize(record.ExecutablePath).toLowerCase() === executablePath
+  ));
+  const processIds = new Set(matches.map((record) => Number(record.ProcessId)));
+  return matches
+    .filter((record) => !processIds.has(Number(record.ParentProcessId)))
+    .map((record) => ({
+      pid: Number(record.ProcessId),
+      command: record.CommandLine || "",
+    }));
+}
+
 function codexAppProcesses(appPath) {
+  if (process.platform === "win32") return windowsCodexAppProcesses(appPath);
+
   const processes = spawnSync("/bin/ps", ["-ww", "-axo", "pid=,command="], {
     encoding: "utf8",
     env: withoutTaskboardLauncherEnvironment(process.env),
@@ -3324,6 +3360,7 @@ async function main() {
           if (idleAfterNormalExit) continue;
         } else {
           if (!hasOpenPending()) continue;
+          if (codexAppProcesses(options.appPath).length === 0) continue;
           const launchRequestGeneration = openRequestGeneration;
           try {
             if (!(await startManagedCodex())) {
@@ -3421,6 +3458,7 @@ async function main() {
           injectedTargets.clear();
           cdpRuntime?.close();
           cdpRuntime = null;
+          if (!options.cdpPipe && options.open) openRequestGeneration += 1;
           if (options.cdpPipe) {
             const exitCode = codexProcess.exitCode;
             codexProcess = null;
